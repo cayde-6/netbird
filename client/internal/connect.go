@@ -672,6 +672,7 @@ func createEngineConfig(key wgtypes.Key, config *profilemanager.Config, peerConf
 		DNSRouteInterval:              config.DNSRouteInterval,
 
 		DisableClientRoutes: config.DisableClientRoutes,
+		SplitTunnel:         config.SplitTunnel,
 		DisableServerRoutes: config.DisableServerRoutes || config.BlockInbound,
 		DisableDNS:          config.DisableDNS,
 		DisableFirewall:     config.DisableFirewall,

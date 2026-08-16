@@ -104,6 +104,8 @@ func TestSetConfig_AllFieldsSaved(t *testing.T) {
 		ExtraIFaceBlacklist:  []string{"eth1", "eth2"},
 		DnsLabels:            []string{"label1", "label2"},
 		CleanDNSLabels:       false,
+		SplitTunnel:          []string{"gitlab.example.com", "10.50.0.0/16"},
+		CleanSplitTunnel:     false,
 		DnsRouteInterval:     durationpb.New(2 * time.Minute),
 		Mtu:                  &mtu,
 		SshJWTCacheTTL:       &sshJWTCacheTTL,
@@ -149,6 +151,7 @@ func TestSetConfig_AllFieldsSaved(t *testing.T) {
 	require.Contains(t, cfg.IFaceBlackList, "eth1")
 	require.Contains(t, cfg.IFaceBlackList, "eth2")
 	require.Equal(t, []string{"label1", "label2"}, cfg.DNSLabels.ToPunycodeList())
+	require.Equal(t, []string{"gitlab.example.com", "10.50.0.0/16"}, cfg.SplitTunnel)
 	require.Equal(t, 2*time.Minute, cfg.DNSRouteInterval)
 	require.Equal(t, uint16(mtu), cfg.MTU)
 	require.NotNil(t, cfg.SSHJWTCacheTTL)
@@ -171,6 +174,7 @@ func verifyAllFieldsCovered(t *testing.T, req *proto.SetConfigRequest) {
 		"ProfileName":           true, // metadata
 		"CleanNATExternalIPs":   true, // control flag for clearing
 		"CleanDNSLabels":        true, // control flag for clearing
+		"CleanSplitTunnel":      true, // control flag for clearing
 		"LazyConnectionEnabled": true, // deprecated: proto field retained for compat, no longer applied
 	}
 
@@ -197,6 +201,7 @@ func verifyAllFieldsCovered(t *testing.T, req *proto.SetConfigRequest) {
 		"CustomDNSAddress":              true,
 		"ExtraIFaceBlacklist":           true,
 		"DnsLabels":                     true,
+		"SplitTunnel":                   true,
 		"DnsRouteInterval":              true,
 		"Mtu":                           true,
 		"EnableSSHRoot":                 true,
@@ -256,6 +261,7 @@ func TestCLIFlags_MappedToSetConfig(t *testing.T) {
 		"dns-resolver-address":              "CustomDNSAddress",
 		"extra-iface-blacklist":             "ExtraIFaceBlacklist",
 		"extra-dns-labels":                  "DnsLabels",
+		"split-tunnel":                      "SplitTunnel",
 		"dns-router-interval":               "DnsRouteInterval",
 		"mtu":                               "Mtu",
 		"enable-ssh-root":                   "EnableSSHRoot",
@@ -289,7 +295,7 @@ func TestCLIFlags_MappedToSetConfig(t *testing.T) {
 		if fieldName == "Username" || fieldName == "ProfileName" {
 			continue
 		}
-		if fieldName == "CleanNATExternalIPs" || fieldName == "CleanDNSLabels" {
+		if fieldName == "CleanNATExternalIPs" || fieldName == "CleanDNSLabels" || fieldName == "CleanSplitTunnel" {
 			continue
 		}
 

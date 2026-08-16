@@ -80,6 +80,7 @@ type ManagerConfig struct {
 	PeerStore           *peerstore.Store
 	DisableClientRoutes bool
 	DisableServerRoutes bool
+	SplitTunnel         []string
 }
 
 // DefaultManager is the default instance of a route manager
@@ -109,6 +110,7 @@ type DefaultManager struct {
 	useNewDNSRoute      bool
 	disableClientRoutes bool
 	disableServerRoutes bool
+	splitTunnel         Spec
 	activeRoutes        map[route.HAUniqueID]client.RouteHandler
 	fakeIPManager       *fakeip.Manager
 	dnsForwarderPort    atomic.Uint32
@@ -121,6 +123,16 @@ func NewManager(config ManagerConfig) *DefaultManager {
 
 	if runtime.GOOS == "windows" && config.WGInterface != nil {
 		nbnet.SetVPNInterfaceName(config.WGInterface.Name())
+	}
+
+	splitTunnel, err := ParseSpec(config.SplitTunnel)
+	if err != nil {
+		log.Errorf("Invalid split tunnel configuration, falling back to full tunnel: %v", err)
+		splitTunnel = Spec{}
+	}
+	if !splitTunnel.IsEmpty() {
+		log.Infof("Split tunnel enabled: %d domain(s), %d prefix(es)",
+			len(splitTunnel.Domains), len(splitTunnel.Prefixes))
 	}
 
 	dm := &DefaultManager{
@@ -139,6 +151,7 @@ func NewManager(config ManagerConfig) *DefaultManager {
 		peerStore:           config.PeerStore,
 		disableClientRoutes: config.DisableClientRoutes,
 		disableServerRoutes: config.DisableServerRoutes,
+		splitTunnel:         splitTunnel,
 		activeRoutes:        make(map[route.HAUniqueID]client.RouteHandler),
 	}
 	dm.dnsForwarderPort.Store(uint32(nbdns.ForwarderClientPort))
@@ -424,7 +437,16 @@ func (m *DefaultManager) UpdateRoutes(
 
 	m.mux.Lock()
 	defer m.mux.Unlock()
-	m.useNewDNSRoute = useNewDNSRoute
+	// Split tunneling must keep the dynamic handler. The dnsinterceptor handler
+	// the account-global flag asks for is built for domains served by a routing
+	// peer's DNS forwarder: it answers queries with fake IPs and DNATs them.
+	// Our rewritten default route points at a plain exit node that runs no
+	// forwarder, so interception would send the split tunnel domains' queries to
+	// a port nobody listens on — with no fallthrough by design, they would stop
+	// resolving at all and no route would ever materialise. This only narrows
+	// the client-side handler choice; the server router and the android fake-IP
+	// path below still see the flag as sent.
+	m.useNewDNSRoute = useNewDNSRoute && m.splitTunnel.IsEmpty()
 
 	var merr *multierror.Error
 	if !m.disableClientRoutes {
@@ -435,7 +457,7 @@ func (m *DefaultManager) UpdateRoutes(
 		// Update route selector based on management server's isSelected status
 		m.updateRouteSelectorFromManagement(clientRoutes)
 
-		filteredClientRoutes := m.routeSelector.FilterSelectedExitNodes(clientRoutes)
+		filteredClientRoutes := m.selectedRoutes(clientRoutes)
 
 		// Stop obsolete watchers before applying system routes: dynamic.Route.RemoveRoute()
 		// clears the domain state that RemoveAllowedIPs() decrements from, so allowed IPs
@@ -454,6 +476,10 @@ func (m *DefaultManager) UpdateRoutes(
 		// UI re-fetches ListNetworks.
 		m.statusRecorder.BumpNetworksRevision()
 	}
+	// Deliberately the UNtransformed map: `netbird networks ls` and the UI
+	// exit-node picker must keep seeing the routes the server actually offered,
+	// not the split tunnel rewrite of them. Everything that applies routes goes
+	// through selectedRoutes instead.
 	m.clientRoutes = clientRoutes
 
 	if m.serverRouter == nil {
@@ -568,12 +594,25 @@ func (m *DefaultManager) GetClientRoutesWithNetID() map[route.NetID][]*route.Rou
 	return routes
 }
 
+// selectedRoutes narrows the offered routes down to the ones that must actually
+// be applied to the system: deselected exit nodes are dropped and the default
+// route is rewritten into the configured split tunnel routes.
+//
+// Every path that installs routes has to go through here. Transforming has to
+// run after exit node filtering: a rewritten route no longer looks like an exit
+// node to the selector, so transforming earlier would apply every offered exit
+// node at once. Filtering without transforming would reinstall the raw
+// 0.0.0.0/0 and push all traffic into the tunnel.
+func (m *DefaultManager) selectedRoutes(networks route.HAMap) route.HAMap {
+	return Transform(m.routeSelector.FilterSelectedExitNodes(networks), m.splitTunnel)
+}
+
 // TriggerSelection triggers the selection of routes, stopping deselected watchers and starting newly selected ones
 func (m *DefaultManager) TriggerSelection(networks route.HAMap) {
 	m.mux.Lock()
 	defer m.mux.Unlock()
 
-	networks = m.routeSelector.FilterSelectedExitNodes(networks)
+	networks = m.selectedRoutes(networks)
 
 	m.notifier.OnNewRoutes(networks)
 

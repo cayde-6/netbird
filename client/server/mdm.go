@@ -311,8 +311,9 @@ func mdmManagedFieldConflicts(msg *proto.SetConfigRequest, policy *mdm.Policy) [
 // `netbird up` produces a request with every field at its zero value;
 // the gate must skip such no-op invocations or it would always fire
 // even when the user did not pass any --flag. Returns false on a nil
-// msg; true when any management/admin URL, PSK, DNS/NAT list+clean
-// flag, interface/port/MTU, or any optional bool/duration field is set.
+// msg; true when any management/admin URL, PSK, DNS/NAT/split-tunnel
+// list+clean flag, interface/port/MTU, or any optional bool/duration
+// field is set.
 func setConfigRequestHasConfigOverrides(msg *proto.SetConfigRequest) bool {
 	if msg == nil {
 		return false
@@ -324,6 +325,7 @@ func setConfigRequestHasConfigOverrides(msg *proto.SetConfigRequest) bool {
 		len(msg.NatExternalIPs) > 0 || msg.CleanNATExternalIPs ||
 		len(msg.ExtraIFaceBlacklist) > 0 ||
 		len(msg.DnsLabels) > 0 || msg.CleanDNSLabels ||
+		len(msg.SplitTunnel) > 0 || msg.CleanSplitTunnel ||
 		msg.DnsRouteInterval != nil ||
 		msg.RosenpassEnabled != nil ||
 		msg.RosenpassPermissive != nil ||
@@ -381,6 +383,7 @@ func loginRequestHasConfigOverrides(msg *proto.LoginRequest) bool {
 		msg.BlockLanAccess != nil ||
 		msg.DisableNotifications != nil ||
 		len(msg.DnsLabels) > 0 || msg.CleanDNSLabels ||
+		len(msg.SplitTunnel) > 0 || msg.CleanSplitTunnel ||
 		msg.BlockInbound != nil
 }
 

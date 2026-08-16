@@ -532,6 +532,12 @@ func (s *Server) setConfigInputFromRequest(msg *proto.SetConfigRequest) (profile
 		config.DNSLabels = domain.FromPunycodeList(msg.DnsLabels)
 	}
 
+	if msg.CleanSplitTunnel {
+		config.SplitTunnel = []string{}
+	} else if msg.SplitTunnel != nil {
+		config.SplitTunnel = msg.SplitTunnel
+	}
+
 	if msg.CleanNATExternalIPs {
 		config.NATExternalIPs = make([]string, 0)
 	} else if msg.NatExternalIPs != nil {

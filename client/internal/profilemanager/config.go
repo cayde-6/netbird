@@ -102,6 +102,10 @@ type ConfigInput struct {
 
 	DNSLabels domain.List
 
+	// SplitTunnel lists domains and prefixes routed through the tunnel.
+	// nil leaves the stored list alone, an empty non-nil slice clears it.
+	SplitTunnel []string
+
 	MTU *uint16
 }
 
@@ -143,6 +147,10 @@ type Config struct {
 	DisableNotifications *bool
 
 	DNSLabels domain.List
+
+	// SplitTunnel lists domains and prefixes routed through the tunnel.
+	// When empty the client keeps its default full-tunnel behaviour.
+	SplitTunnel []string
 
 	// SSHKey is a private SSH key in a PEM format
 	SSHKey string
@@ -640,6 +648,10 @@ func (config *Config) apply(input ConfigInput) (updated bool, err error) {
 		updated = true
 	}
 
+	if applySplitTunnel(config, input) {
+		updated = true
+	}
+
 	if input.MTU != nil && *input.MTU != config.MTU {
 		log.Infof("updating MTU to %d (old value %d)", *input.MTU, config.MTU)
 		config.MTU = *input.MTU
@@ -1080,4 +1092,18 @@ func ConfigFromJSON(jsonStr string) (*Config, error) {
 	}
 
 	return config, nil
+}
+
+// applySplitTunnel copies the split tunnel list from input into config and
+// reports whether anything changed.
+func applySplitTunnel(config *Config, input ConfigInput) bool {
+	if input.SplitTunnel == nil || slices.Equal(config.SplitTunnel, input.SplitTunnel) {
+		return false
+	}
+
+	log.Infof("updating split tunnel list [ %v ] (old value: [ %v ])",
+		input.SplitTunnel, config.SplitTunnel)
+	config.SplitTunnel = input.SplitTunnel
+
+	return true
 }

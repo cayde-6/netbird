@@ -242,6 +242,12 @@ message LoginRequest {
   optional bool disableSSHAuth = 38;
   optional int32 sshJWTCacheTTL = 39;
   optional bool disable_ipv6 = 40;
+
+  repeated string split_tunnel = 41;
+
+  // cleanSplitTunnel clears the split tunnel list.
+  // Needed because generated code omits empty slices due to omitempty tags.
+  bool cleanSplitTunnel = 42;
 }
 
 message LoginResponse {
@@ -766,6 +772,12 @@ message SetConfigRequest {
   optional bool disableSSHAuth = 33;
   optional int32 sshJWTCacheTTL = 34;
   optional bool disable_ipv6 = 35;
+
+  repeated string split_tunnel = 36;
+
+  // cleanSplitTunnel clears the split tunnel list.
+  // Needed because generated code omits empty slices due to omitempty tags.
+  bool cleanSplitTunnel = 37;
 }
 
 message SetConfigResponse{}

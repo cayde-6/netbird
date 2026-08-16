@@ -38,6 +38,8 @@ const (
 const (
 	dnsLabelsFlag = "extra-dns-labels"
 
+	splitTunnelFlag = "split-tunnel"
+
 	noBrowserFlag = "no-browser"
 	noBrowserDesc = "do not open the browser for SSO login"
 
@@ -52,6 +54,7 @@ var (
 	foregroundMode     bool
 	dnsLabels          []string
 	dnsLabelsValidated domain.List
+	splitTunnel        []string
 	noBrowser          bool
 	showQR             bool
 	profileName        string
@@ -83,6 +86,14 @@ func init() {
 			`An empty string "" clears the previous configuration. `+
 			`E.g. --extra-dns-labels vpc1 or --extra-dns-labels vpc1,mgmt1 `+
 			`or --extra-dns-labels ""`,
+	)
+
+	upCmd.PersistentFlags().StringSliceVar(&splitTunnel, splitTunnelFlag, nil,
+		`Route only the listed domains and prefixes through the tunnel, `+
+			`sending all other traffic directly. `+
+			`An empty string "" clears the list and restores full-tunnel routing. `+
+			`E.g. --split-tunnel gitlab.example.com,10.50.0.0/16 `+
+			`or --split-tunnel ""`,
 	)
 
 	upCmd.PersistentFlags().BoolVar(&noBrowser, noBrowserFlag, false, noBrowserDesc)
@@ -410,6 +421,8 @@ func setupSetConfigReq(customDNSAddressConverted []byte, cmd *cobra.Command, pro
 	req.ExtraIFaceBlacklist = extraIFaceBlackList
 	req.DnsLabels = dnsLabelsValidated.ToPunycodeList()
 	req.CleanDNSLabels = dnsLabels != nil && len(dnsLabels) == 0
+	req.SplitTunnel = splitTunnel
+	req.CleanSplitTunnel = splitTunnel != nil && len(splitTunnel) == 0
 	req.CleanNATExternalIPs = natExternalIPs != nil && len(natExternalIPs) == 0
 
 	if cmd.Flag(enableRosenpassFlag).Changed {
@@ -510,6 +523,7 @@ func setupConfig(customDNSAddressConverted []byte, cmd *cobra.Command, configFil
 		CustomDNSAddress:    customDNSAddressConverted,
 		ExtraIFaceBlackList: extraIFaceBlackList,
 		DNSLabels:           dnsLabelsValidated,
+		SplitTunnel:         splitTunnel,
 	}
 
 	if cmd.Flag(enableRosenpassFlag).Changed {
@@ -631,6 +645,8 @@ func setupLoginRequest(providedSetupKey string, customDNSAddressConverted []byte
 		ExtraIFaceBlacklist: extraIFaceBlackList,
 		DnsLabels:           dnsLabels,
 		CleanDNSLabels:      dnsLabels != nil && len(dnsLabels) == 0,
+		SplitTunnel:         splitTunnel,
+		CleanSplitTunnel:    splitTunnel != nil && len(splitTunnel) == 0,
 	}
 
 	if rootCmd.PersistentFlags().Changed(preSharedKeyFlag) {
