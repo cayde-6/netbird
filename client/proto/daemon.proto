@@ -248,6 +248,12 @@ message LoginRequest {
   // remoteJobsAllowed opts the peer into management-requested remote jobs
   // (e.g. debug bundles). Absent leaves the stored value unchanged.
   optional bool remoteJobsAllowed = 43;
+
+  repeated string split_tunnel = 44;
+
+  // cleanSplitTunnel clears the split tunnel list.
+  // Needed because generated code omits empty slices due to omitempty tags.
+  bool cleanSplitTunnel = 45;
 }
 
 message LoginResponse {
@@ -780,6 +786,12 @@ message SetConfigRequest {
   // remoteJobsAllowed opts the peer into management-requested remote jobs
   // (e.g. debug bundles). Absent leaves the stored value unchanged.
   optional bool remoteJobsAllowed = 38;
+
+  repeated string split_tunnel = 39;
+
+  // cleanSplitTunnel clears the split tunnel list.
+  // Needed because generated code omits empty slices due to omitempty tags.
+  bool cleanSplitTunnel = 40;
 }
 
 message SetConfigResponse{}
