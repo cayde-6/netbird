@@ -304,7 +304,7 @@ func mdmManagedFieldConflicts(msg *proto.SetConfigRequest, policy *mdm.Policy) [
 	})
 }
 
-// setConfigRequestHasConfigOverrides reports whether the SetConfigRequest
+// SetConfigRequestHasConfigOverrides reports whether the SetConfigRequest
 // carries ANY field that would actually mutate the persisted config.
 // The CLI builds a SetConfigRequest unconditionally on every
 // `netbird up` (see setupSetConfigReq in cmd/up.go) — a plain
@@ -314,7 +314,7 @@ func mdmManagedFieldConflicts(msg *proto.SetConfigRequest, policy *mdm.Policy) [
 // msg; true when any management/admin URL, PSK, DNS/NAT/split-tunnel
 // list+clean flag, interface/port/MTU, or any optional bool/duration
 // field is set.
-func setConfigRequestHasConfigOverrides(msg *proto.SetConfigRequest) bool {
+func SetConfigRequestHasConfigOverrides(msg *proto.SetConfigRequest) bool {
 	if msg == nil {
 		return false
 	}

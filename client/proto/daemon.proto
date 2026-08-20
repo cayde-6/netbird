@@ -374,6 +374,37 @@ message GetConfigResponse {
   // render the corresponding inputs as read-only and display a "managed
   // by MDM" indicator.
   repeated string mDMManagedFields = 28;
+
+  // splitTunnel lists domains and prefixes routed through the tunnel.
+  repeated string splitTunnel = 29;
+
+  // dnsLabels settings value.
+  repeated string dnsLabels = 30;
+
+  // natExternalIPs map list of external IPs.
+  repeated string natExternalIPs = 31;
+
+  // ifaceBlacklist is the effective list of ignored interfaces: the
+  // built-in defaults plus any entries added via --extra-iface-blacklist.
+  // Corresponds to Config.IFaceBlackList.
+  repeated string ifaceBlacklist = 32;
+
+  bytes customDNSAddress = 33;
+
+  google.protobuf.Duration dnsRouteInterval = 34;
+
+  bool disableFirewall = 35;
+
+  // fullConfigSnapshot is set to true by a daemon that populates ALL
+  // configuration fields in this response (including 29-35). An older
+  // daemon that predates those fields does not set it, so it arrives as
+  // false - this is the only reliable way to tell "field absent" from
+  // "field present with its zero value", because repeated fields cannot be
+  // declared optional in proto3 and therefore have no wire-level presence
+  // marker of their own. Callers that compare a requested configuration
+  // against this snapshot value-by-value MUST treat a false here as an
+  // incomplete snapshot and must not trust it for that comparison.
+  bool fullConfigSnapshot = 36;
 }
 
 // PeerState contains the latest state of a peer

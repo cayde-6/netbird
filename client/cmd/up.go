@@ -278,6 +278,16 @@ func runInForegroundMode(ctx context.Context, cmd *cobra.Command, activeProf *pr
 	return connectClient.Run(nil, util.FindFirstLogPath(logFiles))
 }
 
+// shouldReapplyConfig reports whether an already connected daemon has to be
+// restarted for this `up` invocation to take effect: either the active profile
+// changed, or the user passed config flags whose value actually differs from
+// what's currently stored (current == nil when the daemon's config could not
+// be read, in which case SetConfigRequestChangesConfig falls back to a
+// presence-only check).
+func shouldReapplyConfig(profileSwitched bool, req *proto.SetConfigRequest, current *proto.GetConfigResponse) bool {
+	return profileSwitched || server.SetConfigRequestChangesConfig(req, current)
+}
+
 func runInDaemonMode(ctx context.Context, cmd *cobra.Command, pm *profilemanager.ProfileManager, activeProf *profilemanager.Profile, profileSwitched bool) error {
 	// Check if deprecated config flag is set and show warning
 	if cmd.Flag("config").Changed && configPath != "" {
@@ -313,30 +323,66 @@ func runInDaemonMode(ctx context.Context, cmd *cobra.Command, pm *profilemanager
 		return fmt.Errorf("unable to get daemon status: %v", err)
 	}
 
-	if status.Status == string(internal.StatusConnected) {
-		if !profileSwitched {
-			cmd.Println("Already connected")
-			return nil
-		}
-
-		if _, err := client.Down(ctx, &proto.DownRequest{}); err != nil {
-			log.Errorf("call service down method: %v", err)
-			return err
-		}
-	}
-
 	username, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("get current user: %v", err)
 	}
 
 	// set the new config
-	req := setupSetConfigReq(customDNSAddressConverted, cmd, activeProf.ID.String(), username.Username)
+	req, err := setupSetConfigReq(customDNSAddressConverted, cmd, activeProf.ID.String(), username.Username)
+	if err != nil {
+		return fmt.Errorf("setup config request: %v", err)
+	}
+
+	connected := status.Status == string(internal.StatusConnected)
+	if connected {
+		// Read the daemon's currently stored config so shouldReapplyConfig can
+		// tell an actual value change from a flag that was merely present in
+		// the request (e.g. via SetFlagsFromEnvVars). A failed read falls back
+		// to the conservative presence-only check inside
+		// SetConfigRequestChangesConfig; the command must not fail here.
+		current, getErr := client.GetConfig(ctx, &proto.GetConfigRequest{
+			ProfileName: activeProf.ID.String(),
+			Username:    username.Username,
+		})
+		if getErr != nil {
+			log.Debugf("failed to get current daemon config, falling back to presence-only reapply check: %v", getErr)
+			current = nil
+		}
+
+		if !shouldReapplyConfig(profileSwitched, req, current) {
+			cmd.Println("Already connected")
+			return nil
+		}
+	}
+
 	if _, err := client.SetConfig(ctx, req); err != nil {
 		if st, ok := gstatus.FromError(err); ok && st.Code() == codes.Unavailable {
+			if server.SetConfigRequestHasConfigOverrides(req) {
+				// Unavailable here means the update-settings gate rejected
+				// the request (daemon started with
+				// --disable-update-settings), not "old daemon without a
+				// SetConfig method": the request carries real overrides, so
+				// silently continuing would apply none of them. Fail before
+				// touching the existing connection.
+				return daemonCallError("failed to apply configuration", err)
+			}
+			// No overrides in the request: this is the genuine old-daemon
+			// case, safe to ignore.
 			log.Warnf("setConfig method is not available in the daemon: %s", st.Message())
 		} else {
 			return daemonCallError("call service setConfig method", err)
+		}
+	}
+
+	if connected {
+		if !profileSwitched {
+			cmd.Println("Applying new configuration, reconnecting...")
+		}
+
+		if _, err := client.Down(ctx, &proto.DownRequest{}); err != nil {
+			log.Errorf("call service down method: %v", err)
+			return err
 		}
 	}
 
@@ -409,7 +455,7 @@ func doDaemonUp(ctx context.Context, cmd *cobra.Command, client proto.DaemonServ
 	return nil
 }
 
-func setupSetConfigReq(customDNSAddressConverted []byte, cmd *cobra.Command, profileName, username string) *proto.SetConfigRequest {
+func setupSetConfigReq(customDNSAddressConverted []byte, cmd *cobra.Command, profileName, username string) (*proto.SetConfigRequest, error) {
 	var req proto.SetConfigRequest
 	req.ProfileName = profileName
 	req.Username = username
@@ -455,8 +501,7 @@ func setupSetConfigReq(customDNSAddressConverted []byte, cmd *cobra.Command, pro
 	}
 	if cmd.Flag(interfaceNameFlag).Changed {
 		if err := parseInterfaceName(interfaceName); err != nil {
-			log.Errorf("parse interface name: %v", err)
-			return nil
+			return nil, fmt.Errorf("parse interface name: %w", err)
 		}
 		req.InterfaceName = &interfaceName
 	}
@@ -512,7 +557,7 @@ func setupSetConfigReq(customDNSAddressConverted []byte, cmd *cobra.Command, pro
 		req.DisableIpv6 = &disableIPv6
 	}
 
-	return &req
+	return &req, nil
 }
 
 func setupConfig(customDNSAddressConverted []byte, cmd *cobra.Command, configFilePath string) (*profilemanager.ConfigInput, error) {

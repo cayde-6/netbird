@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	gstatus "google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/netbirdio/netbird/client/internal/auth"
@@ -449,7 +450,7 @@ func (s *Server) SetConfig(callerCtx context.Context, msg *proto.SetConfigReques
 	// `netbird up` would otherwise always trip the gate and surface a
 	// misleading "setConfig method is not available" warning, even when
 	// the user did not pass any config flag.
-	if setConfigRequestHasConfigOverrides(msg) {
+	if SetConfigRequestHasConfigOverrides(msg) {
 		if s.checkUpdateSettingsDisabled() {
 			return nil, gstatus.Errorf(codes.Unavailable, errUpdateSettingsDisabled)
 		}
@@ -2123,6 +2124,18 @@ func (s *Server) GetConfig(ctx context.Context, req *proto.GetConfigRequest) (*p
 		DisableSSHAuth:                disableSSHAuth,
 		SshJWTCacheTTL:                sshJWTCacheTTL,
 		MDMManagedFields:              cfg.Policy().ManagedKeys(),
+		SplitTunnel:                   cfg.SplitTunnel,
+		DnsLabels:                     cfg.DNSLabels.ToPunycodeList(),
+		NatExternalIPs:                cfg.NATExternalIPs,
+		IfaceBlacklist:                cfg.IFaceBlackList,
+		CustomDNSAddress:              []byte(cfg.CustomDNSAddress),
+		DnsRouteInterval:              durationpb.New(cfg.DNSRouteInterval),
+		DisableFirewall:               cfg.DisableFirewall,
+		// This handler populates every configuration field above, so callers
+		// that compare a requested configuration against this snapshot
+		// value-by-value can trust it. See the field's doc comment in
+		// daemon.proto for why this flag exists.
+		FullConfigSnapshot: true,
 	}, nil
 }
 
