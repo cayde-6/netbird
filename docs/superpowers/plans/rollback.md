@@ -36,7 +36,7 @@ App Management не дают править содержимое подписа�
 
     cd /path/to/netbird
     export PATH="/opt/homebrew/bin:$(go env GOPATH)/bin:$PATH"
-    git checkout split-tunnel
+    git checkout split-tunnel-public
     go build -o /tmp/netbird-split ./client
     sudo cp /tmp/netbird-split /usr/local/bin/netbird-split
     sudo codesign -f -s - /usr/local/bin/netbird-split
@@ -45,6 +45,6 @@ App Management не дают править содержимое подписа�
     sudo ln -s /usr/local/bin/netbird-split /usr/local/bin/netbird
     sudo launchctl load /Library/LaunchDaemons/netbird.plist
 
-Если апстрим ушёл вперёд, ветку `split-tunnel` нужно перебазировать на новый
+Если апстрим ушёл вперёд, ветку `split-tunnel-public` нужно перебазировать на новый
 тег; патч намеренно локализован (один новый файл плюс несколько точек
 проводки), чтобы это оставалось дешёвым.
