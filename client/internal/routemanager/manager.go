@@ -588,32 +588,17 @@ func (m *DefaultManager) TriggerSelection(networks route.HAMap) {
 
 	for id, routes := range networks {
 		if _, found := m.clientNetworks[id]; found {
-			// don't touch existing client network watchers
+			// Don't touch existing client network watchers: a selection carries no update
+			// serial, so the zero value here would be rejected as stale by any watcher that
+			// has already seen a real update.
 			continue
 		}
 
-		handler := m.activeRoutes[id]
-		if handler == nil {
-			log.Warnf("no active handler found for route %s", id)
+		watcher := m.ensureClientNetworkWatcher(id, routes)
+		if watcher == nil {
 			continue
 		}
-
-		config := client.WatcherConfig{
-			Context:          m.ctx,
-			DNSRouteInterval: m.dnsRouteInterval,
-			WGInterface:      m.wgInterface,
-			StatusRecorder:   m.statusRecorder,
-			Route:            routes[0],
-			Handler:          handler,
-		}
-		clientNetworkWatcher := client.NewWatcher(config)
-		m.clientNetworks[id] = clientNetworkWatcher
-		m.shutdownWg.Add(1)
-		go func() {
-			defer m.shutdownWg.Done()
-			clientNetworkWatcher.Start()
-		}()
-		clientNetworkWatcher.SendUpdate(client.RoutesUpdate{Routes: routes})
+		watcher.SendUpdate(client.RoutesUpdate{Routes: routes})
 	}
 
 	if err := m.stateManager.UpdateState((*SelectorState)(m.routeSelector)); err != nil {
@@ -639,36 +624,47 @@ func (m *DefaultManager) stopObsoleteClients(networks route.HAMap) {
 // Callers are responsible for stopping obsolete watchers (via stopObsoleteClients) beforehand.
 func (m *DefaultManager) updateClientNetworks(updateSerial uint64, networks route.HAMap) {
 	for id, routes := range networks {
-		clientNetworkWatcher, found := m.clientNetworks[id]
-		if !found {
-			handler := m.activeRoutes[id]
-			if handler == nil {
-				log.Errorf("No active handler found for route %s", id)
-				continue
-			}
-
-			config := client.WatcherConfig{
-				Context:          m.ctx,
-				DNSRouteInterval: m.dnsRouteInterval,
-				WGInterface:      m.wgInterface,
-				StatusRecorder:   m.statusRecorder,
-				Route:            routes[0],
-				Handler:          handler,
-			}
-			clientNetworkWatcher = client.NewWatcher(config)
-			m.clientNetworks[id] = clientNetworkWatcher
-			m.shutdownWg.Add(1)
-			go func() {
-				defer m.shutdownWg.Done()
-				clientNetworkWatcher.Start()
-			}()
+		watcher := m.ensureClientNetworkWatcher(id, routes)
+		if watcher == nil {
+			continue
 		}
-		update := client.RoutesUpdate{
+		watcher.SendUpdate(client.RoutesUpdate{
 			UpdateSerial: updateSerial,
 			Routes:       routes,
-		}
-		clientNetworkWatcher.SendUpdate(update)
+		})
 	}
+}
+
+// ensureClientNetworkWatcher returns the watcher for the given HA route, starting one if it isn't
+// running yet. It returns nil when no handler has been registered for the route, which means the
+// caller must skip it. Callers must hold m.mux.
+func (m *DefaultManager) ensureClientNetworkWatcher(id route.HAUniqueID, routes []*route.Route) *client.Watcher {
+	if watcher, found := m.clientNetworks[id]; found {
+		return watcher
+	}
+
+	handler := m.activeRoutes[id]
+	if handler == nil {
+		log.Errorf("No active handler found for route %s", id)
+		return nil
+	}
+
+	watcher := client.NewWatcher(client.WatcherConfig{
+		Context:          m.ctx,
+		DNSRouteInterval: m.dnsRouteInterval,
+		WGInterface:      m.wgInterface,
+		StatusRecorder:   m.statusRecorder,
+		Route:            routes[0],
+		Handler:          handler,
+	})
+	m.clientNetworks[id] = watcher
+	m.shutdownWg.Add(1)
+	go func() {
+		defer m.shutdownWg.Done()
+		watcher.Start()
+	}()
+
+	return watcher
 }
 
 func (m *DefaultManager) ClassifyRoutes(newRoutes []*route.Route) (map[route.ID]*route.Route, route.HAMap) {
